@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="nl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico"/>
+    <title>Kookboek</title>
+    <style>
+        body {
+            width: 80%;
+            margin: 0 auto;
+            max-width: 1200px;
+            padding: 1em;
+        }
+
+        #tagline {
+            clear: both;
+            font-size: 1.5em;
+            font-family: Merriweather, Georgia, serif;
+            font-weight: 500;
+        }
+
+        h1 {
+            float: left;
+            color: #888;
+            margin: 20px;
+            font-size: 16px;
+        }
+
+        a {
+            background: #888;
+            margin: 20px;
+            display: inline-block;
+            color: #FFF;
+            text-decoration: none;
+            padding: .2em;
+            font-weight: bold;
+            float: right;
+        }
+    </style>
+</head>
+<body>
+<h1>Kookboek</h1>
+<a href="/" id="opnieuw">opnieuw</a>
+<p id="tagline"></p>
+
+<script>
+    var element = document.getElementById('tagline');
+    function refill() {
+        var request = new XMLHttpRequest();
+        request.addEventListener('load', function () {
+            element.textContent = this.responseText;
+        });
+        request.open('GET', '/recipe', true);
+        request.send();
+    }
+
+    refill();
+
+    document.getElementById('opnieuw').addEventListener('click', function (e) {
+        e.preventDefault();
+        refill();
+    });
+</script>
+</body>
+</html>
