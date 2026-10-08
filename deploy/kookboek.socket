@@ -1,0 +1,12 @@
+# systemd creates the socket and starts kookboek.service on the first connection.
+# The socket must be writable by the user nginx runs as (www-data on Debian/Ubuntu).
+[Unit]
+Description=Kookboek recipe generator socket
+
+[Socket]
+ListenStream=/run/kookboek.sock
+SocketGroup=www-data
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target

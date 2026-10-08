@@ -1,9 +1,8 @@
-# Build:   make                      (bin/recipe, with the model compiled in)
-# Server:  make LDFLAGS=-static      (static binary: no dynamic loader on every exec)
+# make         bin/recipe, with the model compiled in
+# make check   verify the tables and test CGI and FastCGI output
 CC ?= cc
 PYTHON ?= python3
 CFLAGS ?= -O2
-CPPFLAGS += -D_POSIX_C_SOURCE=200809L
 WARN = -std=c99 -pedantic-errors -Wall -Wextra
 
 all: bin/recipe

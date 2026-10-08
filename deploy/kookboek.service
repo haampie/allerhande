@@ -1,0 +1,20 @@
+# Forking FastCGI server: one fresh child process per request.
+# Adjust ExecStart to your checkout. Runs as a dedicated user without a home or
+# shell: useradd --system --no-create-home --shell /usr/sbin/nologin kookboek
+[Unit]
+Description=Kookboek recipe generator
+Requires=kookboek.socket
+After=kookboek.socket
+
+[Service]
+ExecStart=/path/to/allerhande/bin/recipe
+User=kookboek
+Restart=always
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=full
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

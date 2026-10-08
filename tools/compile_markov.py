@@ -7,11 +7,11 @@ Input: {"w1 w2": {"w3": probability, ...}, ...}
 
 Output: static const tables (no pointers, so no relocations at load time):
 
-    starts[]      {threshold, word_a, word_b, state}   sentence-opening pairs
-    states[]      {first, count}                       one per "w1 w2" key
-    transitions[] {threshold, word, next}              next = state "w2 w3" or NONE
-    words[]       {offset, len | SENTENCE_END}         into blob[]
-    blob[]        concatenated UTF-8 words, no terminators
+    data_starts[]      {threshold, word_a, word_b, state}   sentence-opening pairs
+    data_states[]      {first, count}                       one per "w1 w2" key
+    data_transitions[] {threshold, word, next}              next = state "w2 w3" or NONE
+    data_words[]       {offset, len | SENTENCE_END}         into data_blob[]
+    data_blob[]        concatenated UTF-8 words, no terminators
 
 Thresholds are cumulative weights scaled to [0, 2^32 - 1]; the last one of each
 run is exactly 2^32 - 1, so a uniform 32-bit draw always selects an entry.
@@ -125,12 +125,12 @@ def emit(model, path):
         f.write("#define N_TRANSITIONS %du\n" % len(model["transitions"]))
         f.write("#define N_WORDS %du\n" % len(model["words"]))
         f.write("#define MAX_WORD_LEN %du\n\n" % model["max_word_len"])
-        rows(f, "static const struct start starts[N_STARTS]", structs(model["starts"]), 8)
-        rows(f, "static const struct state states[N_STATES]", structs(model["states"]), 12)
-        rows(f, "static const struct trans transitions[N_TRANSITIONS]",
+        rows(f, "static const struct start data_starts[N_STARTS]", structs(model["starts"]), 8)
+        rows(f, "static const struct state data_states[N_STATES]", structs(model["states"]), 12)
+        rows(f, "static const struct trans data_transitions[N_TRANSITIONS]",
              structs(model["transitions"]), 8)
-        rows(f, "static const struct word words[N_WORDS]", structs(model["words"]), 12)
-        rows(f, "static const unsigned char blob[%d]" % len(model["blob"]),
+        rows(f, "static const struct word data_words[N_WORDS]", structs(model["words"]), 12)
+        rows(f, "static const unsigned char data_blob[%d]" % len(model["blob"]),
              [str(b) for b in model["blob"]], 32)
 
 
