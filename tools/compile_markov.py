@@ -10,8 +10,10 @@ Output: static const tables (no pointers, so no relocations at load time):
     data_starts[]      {threshold, word_a, word_b, state}   sentence-opening pairs
     data_states[]      {first, count}                       one per "w1 w2" key
     data_transitions[] {threshold, word, next}              next = state "w2 w3" or NONE
-    data_words[]       {offset, len | SENTENCE_END}         into data_blob[]
+    data_words[]       {offset, len | SENTENCE_END, ingredient} into data_blob[]
     data_blob[]        concatenated UTF-8 words, no terminators
+
+ingredient is an index into the set of ingredient base forms, or NONE.
 
 Thresholds are cumulative weights scaled to [0, 2^32 - 1]; the last one of each
 run is exactly 2^32 - 1, so a uniform 32-bit draw always selects an entry.
@@ -28,8 +30,45 @@ UINT32_MAX = 0xFFFFFFFF
 SENTENCE_END = 0x80000000
 
 
+# Words ending in "." that don't end a sentence ("5 min. op laag vuur").
+ABBREVIATIONS = frozenset([
+    "ca.", "(ca.", "min.", "sec.", "max.", "(max.", "evt.", "bijv.", "(bijv.", "el.", "ml.",
+    "p.p.", "incl.", "(incl.",
+])
+
+# Ingredients are recognised as words following "<prep verb> de/het": "snijd de ui".
+PREP_VERBS = [
+    "snijd", "schil", "hak", "halveer", "rasp", "pel", "snipper", "was", "pers", "kook", "maal",
+    "boen", "plet", "kneus", "rooster", "pureer", "prak", "scheur", "ris", "pluk", "verkruimel",
+]
+NOT_INGREDIENTS = frozenset("""
+    de het een en in met op van tot of aan uit om voor over door
+    stuk stukken stukjes rest helft geheel beide overige overgebleven
+    witte gele groene rode zwarte verse grote kleine harde zachte gekookte
+    blad bladeren blaadjes vel velletje vruchtvlees schil uiteinden onderkant bovenkant
+    steeltjes zaadjes pitjes pit pitten korst korstjes kern steelaanzet zaadlijsten vlies
+    takjes naaldjes stengels deeg lengte
+""".split())
+
+
 def ends_sentence(word):
-    return word.endswith(".") or word.endswith("!")
+    return (word.endswith(".") or word.endswith("!")) and word not in ABBREVIATIONS
+
+
+def base_form(word):
+    """Strips punctuation, so "ui." and "(ui," count as the same ingredient as "ui"."""
+    return word.strip(".,!;:()")
+
+
+def ingredient_bases(markov):
+    bases = set()
+    for verb in PREP_VERBS:
+        for article in ("de", "het"):
+            for w in markov.get(verb + " " + article, {}):
+                b = base_form(w)
+                if b and b not in NOT_INGREDIENTS and not b[0].isdigit():
+                    bases.add(b)
+    return sorted(bases)
 
 
 def thresholds(weights):
@@ -69,12 +108,12 @@ def build(markov):
         for w3, t in zip(words, thresholds(list(nexts.values()))):
             transitions.append((t, word_id(w3), state_ids.get(w2 + " " + w3, NONE)))
 
-    # Sentence-opening pairs (a, b): a follows a word ending in ".", b follows a,
+    # Sentence-opening pairs (a, b): a follows a word ending a sentence, b follows a,
     # and "a b" is a state. Weighted by summed transition probability (~ frequency).
     weights = collections.OrderedDict()
     for key, nexts in markov.items():
         w1, a = key.split(" ")
-        if not w1.endswith(".") or ends_sentence(a):
+        if not ends_sentence(w1) or ends_sentence(a):
             continue
         for b, p in nexts.items():
             if ends_sentence(b) or (a + " " + b) not in state_ids:
@@ -87,13 +126,17 @@ def build(markov):
         for (a, b), t in zip(weights.keys(), thresholds(list(weights.values())))
     ]
 
+    ingredients = ingredient_bases(markov)
+    ingredient_ids = dict((b, i) for i, b in enumerate(ingredients))
+
     blob = bytearray()
     words = []
     for w in word_ids:
         enc = w.encode("utf-8")
         if not enc or len(enc) > 255:
             sys.exit("bad word: %r" % w)
-        words.append((len(blob), len(enc) | (SENTENCE_END if ends_sentence(w) else 0)))
+        words.append((len(blob), len(enc) | (SENTENCE_END if ends_sentence(w) else 0),
+                      ingredient_ids.get(base_form(w), NONE)))
         blob += enc
 
     return {
@@ -102,6 +145,7 @@ def build(markov):
         "transitions": transitions,
         "words": words,
         "blob": bytes(blob),
+        "ingredients": ingredients,
         "max_word_len": max(len(w.encode("utf-8")) for w in word_ids),
     }
 
@@ -124,6 +168,7 @@ def emit(model, path):
         f.write("#define N_STATES %du\n" % len(model["states"]))
         f.write("#define N_TRANSITIONS %du\n" % len(model["transitions"]))
         f.write("#define N_WORDS %du\n" % len(model["words"]))
+        f.write("#define N_INGREDIENTS %du\n" % len(model["ingredients"]))
         f.write("#define MAX_WORD_LEN %du\n\n" % model["max_word_len"])
         rows(f, "static const struct start data_starts[N_STARTS]", structs(model["starts"]), 8)
         rows(f, "static const struct state data_states[N_STATES]", structs(model["states"]), 12)
@@ -139,9 +184,9 @@ def main():
         sys.exit("usage: compile_markov.py markov-2.json markov_data.h")
     model = build(load(sys.argv[1]))
     emit(model, sys.argv[2])
-    print("%s: %d starts, %d states, %d transitions, %d words"
+    print("%s: %d starts, %d states, %d transitions, %d words, %d ingredients"
           % (sys.argv[2], len(model["starts"]), len(model["states"]),
-             len(model["transitions"]), len(model["words"])))
+             len(model["transitions"]), len(model["words"]), len(model["ingredients"])))
 
 
 if __name__ == "__main__":

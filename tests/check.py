@@ -24,18 +24,21 @@ NONE = 0xFFFFFFFF
 SENTENCE_END = 0x80000000
 
 
-def ends_sentence(w):
-    return w.endswith(".") or w.endswith("!")
+ends_sentence = compile_markov.ends_sentence
 
 
 def check_model(markov, model):
     blob = model["blob"]
+    ingredients = model["ingredients"]
     words = []
-    for off, lf in model["words"]:
+    for off, lf, ing in model["words"]:
         w = blob[off:off + (lf & ~SENTENCE_END)].decode("utf-8")
         assert bool(lf & SENTENCE_END) == ends_sentence(w)
+        assert (ing == NONE) == (compile_markov.base_form(w) not in ingredients)
+        assert ing == NONE or ingredients[ing] == compile_markov.base_form(w)
         words.append(w)
     assert len(set(words)) == len(words)
+    assert not set(ingredients) & compile_markov.NOT_INGREDIENTS
 
     keys = list(markov)
     assert len(model["states"]) == len(keys)
@@ -63,8 +66,8 @@ def check_model(markov, model):
         assert not ends_sentence(words[a]) and not ends_sentence(words[b])
         starts.add((words[a], words[b]))
     assert prev == UINT32_MAX
-    print("model ok: %d states, %d transitions, %d start pairs"
-          % (len(keys), len(model["transitions"]), len(starts)))
+    print("model ok: %d states, %d transitions, %d start pairs, %d ingredients"
+          % (len(keys), len(model["transitions"]), len(starts), len(ingredients)))
     return starts
 
 
@@ -76,6 +79,7 @@ def check_outputs(markov, starts, label, responses):
     seen_starts = collections.Counter()
     outputs = set()
     lengths = []
+    sentence_lengths = []
     full = 0
     for raw in responses:
         assert raw.startswith(HEADER), raw[:100]
@@ -89,6 +93,12 @@ def check_outputs(markov, starts, label, responses):
         n = len(ws) - 2
         lengths.append(n)
         full += ends_sentence(ws[-1])
+        k = 0
+        for w in ws:
+            k += 1
+            if ends_sentence(w):
+                sentence_lengths.append(k)
+                k = 0
         dead_end = (ws[-2] + " " + ws[-1]) not in markov
         assert n <= 300
         if n < 150:
@@ -101,6 +111,9 @@ def check_outputs(markov, starts, label, responses):
           len(seen_starts)))
     print("  words after start pair min/avg/max: %d/%.0f/%d, ending in a full sentence: %.1f%%"
           % (min(lengths), sum(lengths) / len(lengths), max(lengths), 100.0 * full / runs))
+    if sentence_lengths:
+        print("  words per sentence: mean %.1f"
+              % (sum(sentence_lengths) / float(len(sentence_lengths))))
     print("  most common starts:", ", ".join(" ".join(k) for k, _ in seen_starts.most_common(6)))
 
 
