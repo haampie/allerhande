@@ -37,6 +37,8 @@
 
 #define NONE 0xffffffffu
 #define SENTENCE_END 0x80000000u
+#define SEASONING 0x40000000u /* peper, zout */
+#define LENGTH_MASK 0xffffu
 
 #define MIN_WORDS 150 /* generate at least this many words after the start pair */
 #define MAX_WORDS 300 /* ... then continue until a sentence ends, up to this many */
@@ -54,6 +56,9 @@
 #endif
 #ifndef SAME_SENTENCE
 #define SAME_SENTENCE 1 /* multiplier for ingredients already in the current sentence */
+#endif
+#ifndef SEASONING_AGAIN
+#define SEASONING_AGAIN 1 /* multiplier for peper/zout once the recipe has used them */
 #endif
 
 #define MAX_CHILDREN 64    /* concurrent requests; more connections wait in the backlog */
@@ -98,6 +103,7 @@ static uint64_t rng;
  * ingredient isn't repeated within its own sentence: "zout, peper en zout"). */
 static unsigned char seen[(N_INGREDIENTS + 7) / 8 + 1];
 static unsigned char this_sentence[sizeof seen];
+static int seasoned; /* peper or zout used already */
 
 /* splitmix64 */
 static uint64_t random64(void)
@@ -145,6 +151,8 @@ static uint64_t weight(const struct trans *t, uint32_t prev, uint64_t end_multip
 {
     const struct word *w = &words[t->word];
     uint64_t q = (w->len_flags & SENTENCE_END) ? end_multiplier : 4;
+    if ((w->len_flags & SEASONING) && seasoned)
+        q = q * SEASONING_AGAIN / 4;
     if (w->ingredient != NONE) {
         unsigned bit = 1u << (w->ingredient & 7);
         if (this_sentence[w->ingredient >> 3] & bit)
@@ -187,7 +195,7 @@ static const struct trans *pick_transition(const struct state *s, uint32_t sente
 static uint32_t append(unsigned char *dst, size_t *len, uint32_t id, int space)
 {
     const struct word *w = &words[id];
-    uint32_t n = w->len_flags & ~SENTENCE_END;
+    uint32_t n = w->len_flags & LENGTH_MASK;
     size_t i;
     if (space)
         dst[(*len)++] = ' ';
@@ -195,6 +203,8 @@ static uint32_t append(unsigned char *dst, size_t *len, uint32_t id, int space)
     *len += n;
     if (w->ingredient != NONE)
         this_sentence[w->ingredient >> 3] |= (unsigned char)(1u << (w->ingredient & 7));
+    if (w->len_flags & SEASONING)
+        seasoned = 1;
     if (!(w->len_flags & SENTENCE_END))
         return 0;
     for (i = 0; i < sizeof seen; i++)
@@ -214,6 +224,7 @@ static size_t generate(unsigned char *dst)
     memcpy(dst, content_header, len);
     memset(seen, 0, sizeof seen);
     memset(this_sentence, 0, sizeof this_sentence);
+    seasoned = 0;
 
     s = pick_start(random32());
     append(dst, &len, s->word_a, 0);

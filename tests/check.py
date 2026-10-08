@@ -32,13 +32,15 @@ def check_model(markov, model):
     ingredients = model["ingredients"]
     words = []
     for off, lf, ing in model["words"]:
-        w = blob[off:off + (lf & ~SENTENCE_END)].decode("utf-8")
+        w = blob[off:off + (lf & compile_markov.LENGTH_MASK)].decode("utf-8")
         assert bool(lf & SENTENCE_END) == ends_sentence(w)
+        assert bool(lf & compile_markov.SEASONING) == \
+            (compile_markov.base_form(w) in compile_markov.SEASONINGS)
         assert (ing == NONE) == (compile_markov.base_form(w) not in ingredients)
         assert ing == NONE or ingredients[ing] == compile_markov.base_form(w)
         words.append(w)
     assert len(set(words)) == len(words)
-    assert not set(ingredients) & compile_markov.NOT_INGREDIENTS
+    assert not set(ingredients) & (compile_markov.NOT_INGREDIENTS | compile_markov.PANTRY)
 
     keys = list(markov)
     assert len(model["states"]) == len(keys)

@@ -10,7 +10,7 @@ Output: static const tables (no pointers, so no relocations at load time):
     data_starts[]      {threshold, word_a, word_b, state}   sentence-opening pairs
     data_states[]      {first, count}                       one per "w1 w2" key
     data_transitions[] {threshold, word, next}              next = state "w2 w3" or NONE
-    data_words[]       {offset, len | SENTENCE_END, ingredient} into data_blob[]
+    data_words[]       {offset, len | flags, ingredient}    into data_blob[]
     data_blob[]        concatenated UTF-8 words, no terminators
 
 ingredient is an index into the set of ingredient base forms, or NONE.
@@ -28,6 +28,8 @@ import sys
 NONE = 0xFFFFFFFF
 UINT32_MAX = 0xFFFFFFFF
 SENTENCE_END = 0x80000000
+SEASONING = 0x40000000
+LENGTH_MASK = 0xFFFF
 
 
 # Words ending in "." that don't end a sentence ("5 min. op laag vuur").
@@ -48,7 +50,19 @@ NOT_INGREDIENTS = frozenset("""
     blad bladeren blaadjes vel velletje vruchtvlees schil uiteinden onderkant bovenkant
     steeltjes zaadjes pitjes pit pitten korst korstjes kern steelaanzet zaadlijsten vlies
     takjes naaldjes stengels deeg lengte
+    ondertussen dan daarna vervolgens nog boven ter licht extra andere laatste halve dikke ronde
+    rol fruit glad fijn grof vet
+    plak plakjes plakken blokjes reepjes repen partjes sneetjes balletjes kwarten punten stukje
+    mengsel massa vocht deksel rand inhoud parten snijvlak velkant uitgelepelde gedroogde koppen
 """.split())
+
+# Pantry basics: in nearly every recipe already, so bringing them back is noise
+# ("peper, zout en peper"), not a running joke.
+PANTRY = frozenset("peper zout olie water boter".split())
+
+# "breng op smaak met peper en zout" is among the most common sentences; the
+# generator discourages these after their first use in a recipe.
+SEASONINGS = frozenset("peper zout".split())
 
 
 def ends_sentence(word):
@@ -66,7 +80,7 @@ def ingredient_bases(markov):
         for article in ("de", "het"):
             for w in markov.get(verb + " " + article, {}):
                 b = base_form(w)
-                if b and b not in NOT_INGREDIENTS and not b[0].isdigit():
+                if b and b not in NOT_INGREDIENTS and b not in PANTRY and not b[0].isdigit():
                     bases.add(b)
     return sorted(bases)
 
@@ -135,8 +149,9 @@ def build(markov):
         enc = w.encode("utf-8")
         if not enc or len(enc) > 255:
             sys.exit("bad word: %r" % w)
-        words.append((len(blob), len(enc) | (SENTENCE_END if ends_sentence(w) else 0),
-                      ingredient_ids.get(base_form(w), NONE)))
+        flags = ((SENTENCE_END if ends_sentence(w) else 0) |
+                 (SEASONING if base_form(w) in SEASONINGS else 0))
+        words.append((len(blob), len(enc) | flags, ingredient_ids.get(base_form(w), NONE)))
         blob += enc
 
     return {
